@@ -53,11 +53,12 @@ struct {
    { "sharpness", MMALCAM_CHANGE_SHARPNESS },
 };
 
-static int stop;
+static volatile sig_atomic_t stop = 0;
 static VCOS_THREAD_T camcorder_thread;
 static MMALCAM_BEHAVIOUR_T camcorder_behaviour;
 static uint32_t sleepy_time;
-static MMAL_BOOL_T stopped_already;
+static volatile sig_atomic_t stopped_already = 0;
+static volatile sig_atomic_t toggle_display = 0;
 
 /* Utility functions used by test program */
 static void *test_mmal_camcorder(void *id);
@@ -75,13 +76,19 @@ int main(int argc, const char **argv)
    vcos_log_register("mmalcam", VCOS_LOG_CATEGORY);
    printf("MMAL Camera Test App\n");
    signal(SIGINT, test_signal_handler);
+   signal(SIGUSR1, test_signal_handler);
 
    camcorder_behaviour.layer = VIEWFINDER_LAYER;
    camcorder_behaviour.vformat = DEFAULT_VIDEO_FORMAT;
+   camcorder_behaviour.render = 1;
    camcorder_behaviour.zero_copy = 1;
    camcorder_behaviour.bit_rate = DEFAULT_BIT_RATE;
    camcorder_behaviour.focus_test = MMAL_PARAM_FOCUS_MAX;
    camcorder_behaviour.camera_num = DEFAULT_CAM_NUM;
+   camcorder_behaviour.crop_rect.x = 0;
+   camcorder_behaviour.crop_rect.y = 0;
+   camcorder_behaviour.crop_rect.width = 65536;
+   camcorder_behaviour.crop_rect.height = 65536;
 
    if(test_parse_cmdline(argc, argv))
    {
@@ -133,7 +140,14 @@ static void *test_mmal_camcorder(void *id)
    MMALCAM_BEHAVIOUR_T *behaviour = (MMALCAM_BEHAVIOUR_T *)id;
    int value;
 
-   value = test_mmal_start_camcorder(&stop, behaviour);
+   while (1)
+   {
+      value = test_mmal_start_camcorder(&stop, &toggle_display, behaviour);
+      if (value == 5)
+         behaviour->render = !behaviour->render;
+      else
+         break;
+   }
 
    LOG_TRACE("Thread terminating, result %d", value);
    return (void *)value;
@@ -142,7 +156,11 @@ static void *test_mmal_camcorder(void *id)
 /*****************************************************************************/
 static void test_signal_handler(int signum)
 {
-   (void)signum;
+   if (signum == SIGUSR1)
+   {
+      toggle_display = 1;
+      return;
+   } 
 
    if (stopped_already)
    {
@@ -250,6 +268,18 @@ static int test_parse_cmdline(int argc, const char **argv)
          if (sscanf(argv[i+1], "%u", &camcorder_behaviour.camera_num) == 0) goto invalid_option;
          i++;
          break;
+      case 'C': if (i+1 >= argc) goto invalid_option;
+         {
+            double x, y, w, h;
+            if (sscanf(argv[i+1], "%lf,%lf,%lf,%lf", &x, &y, &w, &h) != 4) goto invalid_option;
+            if (x < 0.0 || w < 0.0 || y < 0.0 || h < 0.0 || x + w > 1.0 || y + h > 1.0) goto invalid_option;
+            camcorder_behaviour.crop_rect.x = 65536 * x;
+            camcorder_behaviour.crop_rect.y = 65536 * y;
+            camcorder_behaviour.crop_rect.width = 65536 * w;
+            camcorder_behaviour.crop_rect.height = 65536 * h;
+        }
+        i++;
+        break;
       default: goto invalid_option;
       }
       continue;
@@ -294,6 +324,7 @@ static int test_parse_cmdline(int argc, const char **argv)
       printf(" -b <n>      : use <n> as the bitrate (bits/s)\n");
       printf(" -a <n>      : Set to focus mode <n> (autofocus will cycle). Use MMAL_PARAM_FOCUS_T values.\n");
       printf(" -n <n>      : Set camera number <n>. Use MMAL_PARAMETER_CAMERA_NUM values.\n");
+      printf(" -C <r>      : crop camera view to rectangle r, given as x,y,width,height ratio\n");
    }
    return 1;
 }

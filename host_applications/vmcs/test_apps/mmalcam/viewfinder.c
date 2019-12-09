@@ -387,7 +387,7 @@ static int parse_vformat(const char* vformat, uint32_t *out_width,
 }
 
 /*****************************************************************************/
-int test_mmal_start_camcorder(volatile int *stop, MMALCAM_BEHAVIOUR_T *behaviour)
+int test_mmal_start_camcorder(volatile sig_atomic_t *stop, volatile sig_atomic_t* toggle_display, MMALCAM_BEHAVIOUR_T *behaviour)
 {
    MMAL_STATUS_T status = MMAL_SUCCESS;
    MMAL_POOL_T *pool_viewfinder = 0, *pool_encoder_in = 0, *pool_encoder_out = 0;
@@ -423,19 +423,22 @@ int test_mmal_start_camcorder(volatile int *stop, MMALCAM_BEHAVIOUR_T *behaviour
    still_port = camera->output[2];
 
    /* Create and setup video render component */
-   render = test_video_render_create(behaviour, &status);
-   if(!render)
+   if (behaviour->render)
    {
-      behaviour->init_result = MMALCAM_INIT_ERROR_RENDER;
-      goto error;
-   }
-   render_port = render->input[0];
+      render = test_video_render_create(behaviour, &status);
+      if(!render)
+      {
+         behaviour->init_result = MMALCAM_INIT_ERROR_RENDER;
+         goto error;
+      }
+      render_port = render->input[0];
 
-   status = connect_ports(viewfinder_port, render_port, &queue_viewfinder, &pool_viewfinder);
-   if (status != MMAL_SUCCESS)
-   {
-      behaviour->init_result = MMALCAM_INIT_ERROR_VIEWFINDER;
-      goto error;
+      status = connect_ports(viewfinder_port, render_port, &queue_viewfinder, &pool_viewfinder);
+      if (status != MMAL_SUCCESS)
+      {
+         behaviour->init_result = MMALCAM_INIT_ERROR_VIEWFINDER;
+         goto error;
+      }
    }
 
    if (behaviour->uri)
@@ -521,6 +524,11 @@ int test_mmal_start_camcorder(volatile int *stop, MMALCAM_BEHAVIOUR_T *behaviour
          }
       }
 
+      if (*toggle_display)
+      {
+         break;
+      }
+
       /* Send empty buffers to the output ports */
       status = fill_port_from_pool(viewfinder_port, pool_viewfinder);
       if (status != MMAL_SUCCESS)
@@ -532,10 +540,13 @@ int test_mmal_start_camcorder(volatile int *stop, MMALCAM_BEHAVIOUR_T *behaviour
       if (status != MMAL_SUCCESS)
          break;
 
-      /* Process filled output buffers */
-      status = send_buffer_from_queue(render_port, queue_viewfinder);
-      if (status != MMAL_SUCCESS)
-         break;
+      if (behaviour->render)
+      {
+         /* Process filled output buffers */
+         status = send_buffer_from_queue(render_port, queue_viewfinder);
+         if (status != MMAL_SUCCESS)
+            break;
+      }
       status = send_buffer_from_queue(encoder_input, queue_encoder_in);
       if (status != MMAL_SUCCESS)
          break;
@@ -641,13 +652,17 @@ int test_mmal_start_camcorder(volatile int *stop, MMALCAM_BEHAVIOUR_T *behaviour
    disable_port(encoder_output);
 
    /* Disable components */
-   mmal_component_disable(render);
+   if (render)
+      mmal_component_disable(render);
    if (encoder)
       mmal_component_disable(encoder);
    mmal_component_disable(camera);
 
-   INIT_PARAMETER(behaviour->render_stats, MMAL_PARAMETER_STATISTICS);
-   mmal_port_parameter_get(render_port, &behaviour->render_stats.hdr);
+   if (behaviour->render)
+   {
+      INIT_PARAMETER(behaviour->render_stats, MMAL_PARAMETER_STATISTICS);
+      mmal_port_parameter_get(render_port, &behaviour->render_stats.hdr);
+   }
    if (encoder)
    {
       INIT_PARAMETER(behaviour->encoder_stats, MMAL_PARAMETER_STATISTICS);
@@ -692,6 +707,11 @@ int test_mmal_start_camcorder(volatile int *stop, MMALCAM_BEHAVIOUR_T *behaviour
    if (behaviour->init_result != MMALCAM_INIT_SUCCESS)
       vcos_semaphore_post(&behaviour->init_sem);
 
+   if (*toggle_display)
+   {
+      *toggle_display = 0;
+      return 5;
+   }
    return (int)status;
 }
 
@@ -805,6 +825,11 @@ static MMAL_COMPONENT_T *test_camera_create(MMALCAM_BEHAVIOUR_T *behaviour, MMAL
                               };
 
       mmal_port_parameter_set(camera->control, &cam_config.hdr);
+   }
+   {
+      MMAL_PARAMETER_INPUT_CROP_T crop = {{MMAL_PARAMETER_INPUT_CROP, sizeof(MMAL_PARAMETER_INPUT_CROP_T)}};
+      crop.rect = behaviour->crop_rect;
+      mmal_port_parameter_set(camera->control, &crop.hdr);
    }
 
    /* Set up the viewfinder port format */

@@ -27,6 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef MMALCAM_MMALCAM_H_
 #define MMALCAM_MMALCAM_H_
 
+#include <signal.h>
+
 #define VCOS_LOG_CATEGORY (&mmalcam_log_category)
 #include "interface/vcos/vcos.h"
 #include "interface/mmal/mmal.h"
@@ -67,6 +69,7 @@ typedef struct MMALCAM_BEHAVIOUR_T
 {
    const char *uri;                             /**< Output URI for recording */
    const char *vformat;                         /**< Video resolution and encoding format */
+   MMAL_BOOL_T render;
    MMAL_RECT_T display_area;                    /**< Size and position of viewfinder on screen */
    uint32_t layer;                              /**< Layer number of the viewfinder */
    MMALCAM_CHANGE_T change;                     /**< Camera change to make, if any */
@@ -82,6 +85,7 @@ typedef struct MMALCAM_BEHAVIOUR_T
    uint32_t bit_rate;                           /**< Video encoder bit rate */
    MMAL_PARAM_FOCUS_T focus_test;               /**< Set to given focus, MMAL_PARAM_FOCUS_MAX to disable */
    uint32_t camera_num;                         /**< camera number */
+   MMAL_RECT_T crop_rect;
 } MMALCAM_BEHAVIOUR_T;
 
 /** Start the camcorder.
@@ -93,6 +97,6 @@ typedef struct MMALCAM_BEHAVIOUR_T
  * @param behaviour Defines the behaviour of the camcorder, for automation
  *    purposes.
  */
-int test_mmal_start_camcorder(volatile int *stop, MMALCAM_BEHAVIOUR_T *behaviour);
+int test_mmal_start_camcorder(volatile sig_atomic_t *stop, volatile sig_atomic_t* toggle_dispay, MMALCAM_BEHAVIOUR_T *behaviour);
 
 #endif /* MMALCAM_MMALCAM_H_ */
