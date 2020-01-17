@@ -89,6 +89,7 @@ int main(int argc, const char **argv)
    camcorder_behaviour.crop_rect.y = 0;
    camcorder_behaviour.crop_rect.width = 65536;
    camcorder_behaviour.crop_rect.height = 65536;
+   camcorder_behaviour.max_packet_count = 0;
 
    if(test_parse_cmdline(argc, argv))
    {
@@ -277,9 +278,13 @@ static int test_parse_cmdline(int argc, const char **argv)
             camcorder_behaviour.crop_rect.y = 65536 * y;
             camcorder_behaviour.crop_rect.width = 65536 * w;
             camcorder_behaviour.crop_rect.height = 65536 * h;
-        }
-        i++;
-        break;
+         }
+         i++;
+         break;
+      case 'N': if (i+1 >= argc) goto invalid_option;
+         if (sscanf(argv[i+1], "%d", &camcorder_behaviour.max_packet_count) == 0) goto invalid_option;
+         i++;
+         break;
       default: goto invalid_option;
       }
       continue;
@@ -325,6 +330,7 @@ static int test_parse_cmdline(int argc, const char **argv)
       printf(" -a <n>      : Set to focus mode <n> (autofocus will cycle). Use MMAL_PARAM_FOCUS_T values.\n");
       printf(" -n <n>      : Set camera number <n>. Use MMAL_PARAMETER_CAMERA_NUM values.\n");
       printf(" -C <r>      : crop camera view to rectangle r, given as x,y,width,height ratio\n");
+      printf(" -N <n>      : if positive, after this many packets, the container (if any) will be closed and we start discarding encoded packets\n");
    }
    return 1;
 }

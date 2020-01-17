@@ -49,11 +49,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /** Number of buffers we want to use for video render. Video render needs at least 2. */
 #define VIDEO_OUTPUT_BUFFERS_NUM 3
 
-/** After this many packets, the container (if any) will be closed and we
- * start discarding encoded packets.
- */
-#define MAX_PACKET_COUNT 150
-
 /** Initialise a parameter structure */
 #define INIT_PARAMETER(PARAM, PARAM_ID)   \
    do {                                   \
@@ -572,7 +567,7 @@ int test_mmal_start_camcorder(volatile sig_atomic_t *stop, volatile sig_atomic_t
 #endif
                mmal_buffer_header_mem_unlock(buffer);
                packet_count++;
-               if (packet_count > MAX_PACKET_COUNT)
+               if (behaviour->max_packet_count > 0 && packet_count > behaviour->max_packet_count)
                {
 #if USE_CONTAINER
                   vc_container_close(container);

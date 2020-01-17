@@ -86,6 +86,8 @@ typedef struct MMALCAM_BEHAVIOUR_T
    MMAL_PARAM_FOCUS_T focus_test;               /**< Set to given focus, MMAL_PARAM_FOCUS_MAX to disable */
    uint32_t camera_num;                         /**< camera number */
    MMAL_RECT_T crop_rect;
+   int32_t max_packet_count;                    /**< /** If positive, after this many packets, the container */
+                                                /** (if any) will be closed and we start discarding encoded packets. */
 } MMALCAM_BEHAVIOUR_T;
 
 /** Start the camcorder.
